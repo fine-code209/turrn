@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Dijkstra Keyboard-Driven Simulation</title>
+    <title>Dijkstra Undirected Simulation</title>
     <style>
         :root { --primary: #2563eb; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --bg: #f8fafc; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); overflow: hidden; }
@@ -32,10 +32,10 @@
         .main { flex: 1; position: relative; background: #ffffff; }
         svg { width: 100%; height: 100%; }
 
-        /* Graph Styles */
-        .edge { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrowhead); transition: stroke 0.3s; }
+        /* Graph Styles - ĐÃ LOẠI BỎ MARKER (MŨI TÊN) */
+        .edge { stroke: #94a3b8; stroke-width: 2; fill: none; transition: stroke 0.3s; }
         .edge.active { stroke: var(--warning); stroke-width: 4; }
-        .edge.path { stroke: var(--success); stroke-width: 6; marker-end: url(#arrowhead-path); }
+        .edge.path { stroke: var(--success); stroke-width: 6; }
         
         .node circle { fill: white; stroke: var(--primary); stroke-width: 2; transition: all 0.3s; }
         .node.start circle { fill: #dbeafe; stroke: var(--primary); stroke-width: 4; }
@@ -52,11 +52,11 @@
 <body>
 
 <div class="sidebar">
-    <h2>Mô phỏng Dijkstra</h2>
+    <h2>Dijkstra (Vô hướng)</h2>
     
     <div class="input-group">
-        <label>1. Nhập danh sách cạnh (u v w):</label>
-        <textarea id="edgeInput" placeholder="A B 6&#10;A D 1&#10;D B 2&#10;B C 5">A B 6
+        <label>1. Nhập cạnh (u v w) - Không quan tâm thứ tự:</label>
+        <textarea id="edgeInput" placeholder="A B 6&#10;A D 1&#10;D B 2" rows="6">A B 6
 A D 1
 D B 2
 B C 5
@@ -80,20 +80,11 @@ E C 5</textarea>
     <button id="btnRun" class="btn-run" onclick="startAutoSimulation()">BẮT ĐẦU CHẠY</button>
     <button class="btn-reset" onclick="location.reload()">XÓA TẤT CẢ</button>
 
-    <div id="log"><b>Trạng thái:</b> Sẵn sàng. Hãy nhập dữ liệu và nhấn "Tạo đồ thị".</div>
+    <div id="log"><b>Trạng thái:</b> Đồ thị vô hướng. Nhấn "Tạo đồ thị" để bắt đầu.</div>
 </div>
 
 <div class="main">
-    <svg id="svgCanvas">
-        <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="23" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
-            </marker>
-            <marker id="arrowhead-path" markerWidth="10" markerHeight="7" refX="23" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
-            </marker>
-        </defs>
-    </svg>
+    <svg id="svgCanvas"></svg>
 </div>
 
 <script>
@@ -105,7 +96,6 @@ E C 5</textarea>
     const svg = document.getElementById('svgCanvas');
     const logBox = document.getElementById('log');
 
-    // Cập nhật điểm đầu/cuối khi gõ phím
     function syncNodes() {
         if (isRunning) return;
         startId = document.getElementById('startInput').value.trim().toUpperCase();
@@ -124,10 +114,12 @@ E C 5</textarea>
         text.split('\n').forEach(line => {
             const parts = line.trim().split(/\s+/);
             if (parts.length >= 3) {
-                const [u, v, w] = parts;
-                nodeSet.add(u.toUpperCase()); 
-                nodeSet.add(v.toUpperCase());
-                edges.push({ u: u.toUpperCase(), v: v.toUpperCase(), weight: parseFloat(w), isPath: false, isActive: false });
+                const u = parts[0].toUpperCase();
+                const v = parts[1].toUpperCase();
+                const w = parseFloat(parts[2]);
+                nodeSet.add(u); 
+                nodeSet.add(v);
+                edges.push({ u, v, weight: w, isPath: false, isActive: false });
             }
         });
 
@@ -140,13 +132,12 @@ E C 5</textarea>
             nodes.push({ id, x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle), isCurrent: false });
         });
 
-        syncNodes(); // Cập nhật startId/endId từ ô nhập
-        logBox.innerHTML = "<b>Đã tạo đồ thị!</b><br>Kiểm tra Điểm đầu/cuối rồi nhấn 'Bắt đầu chạy'.";
+        syncNodes();
+        logBox.innerHTML = "<b>Đã tạo đồ thị vô hướng!</b>";
     }
 
     function render() {
-        const defs = svg.querySelector('defs').outerHTML;
-        svg.innerHTML = defs;
+        svg.innerHTML = ''; // Đã xóa phần markers
 
         // Vẽ cạnh & Trọng số
         edges.forEach(edge => {
@@ -194,15 +185,14 @@ E C 5</textarea>
 
     async function startAutoSimulation() {
         if (isRunning) return;
-        syncNodes(); // Đảm bảo lấy giá trị mới nhất từ input
+        syncNodes();
 
-        if (!nodes.find(n => n.id === startId)) return alert("Đỉnh bắt đầu không tồn tại trong đồ thị!");
-        if (!nodes.find(n => n.id === endId)) return alert("Đỉnh kết thúc không tồn tại trong đồ thị!");
+        if (!nodes.find(n => n.id === startId)) return alert("Đỉnh bắt đầu không tồn tại!");
+        if (!nodes.find(n => n.id === endId)) return alert("Đỉnh kết thúc không tồn tại!");
 
         isRunning = true;
         document.getElementById('btnRun').disabled = true;
         
-        // Khởi tạo thuật toán
         visited.clear(); distances = {}; prev = {};
         edges.forEach(e => { e.isPath = false; e.isActive = false; });
         nodes.forEach(n => { distances[n.id] = Infinity; n.isCurrent = false; });
@@ -217,15 +207,17 @@ E C 5</textarea>
 
             visited.add(u);
             nodes.forEach(n => n.isCurrent = (n.id === u));
-            logBox.innerHTML = `Đang xét đỉnh <b>${u}</b> (Khoảng cách: ${distances[u]})`;
+            logBox.innerHTML = `Đang xét đỉnh <b>${u}</b> (d=${distances[u]})`;
             
-            // Highlight các cạnh kề đang kiểm tra
+            // LOGIC MỚI: Tìm tất cả các cạnh có chứa đỉnh u (Vô hướng)
             edges.forEach(e => e.isActive = false);
-            const neighbors = edges.filter(e => e.u === u);
+            const currentEdges = edges.filter(e => e.u === u || e.v === u);
             
-            for (const e of neighbors) {
+            for (const e of currentEdges) {
                 e.isActive = true;
-                const v = e.v;
+                // Xác định đỉnh 'v' là đầu còn lại của cạnh
+                const v = (e.u === u) ? e.v : e.u;
+                
                 const alt = distances[u] + e.weight;
                 if (alt < distances[v]) {
                     distances[v] = alt;
@@ -235,23 +227,21 @@ E C 5</textarea>
             }
 
             render();
-            await new Promise(r => setTimeout(r, 800)); // Delay để quan sát
+            await new Promise(r => setTimeout(r, 800));
 
-            if (u === endId) {
-                tracePath();
-                logBox.innerHTML = `<b>Xong!</b><br>Quãng đường ngắn nhất từ ${startId} đến ${endId} là: <b>${distances[endId]}</b>`;
-                render();
-                break;
-            }
+            if (u === endId) break;
         }
         
-        if (distances[endId] === Infinity) {
-            logBox.innerHTML = `<b>Kết quả:</b> Không có đường đi từ ${startId} đến ${endId}.`;
+        if (distances[endId] !== Infinity) {
+            tracePath();
+            logBox.innerHTML = `<b>Thành công!</b> Khoảng cách ngắn nhất: <b>${distances[endId]}</b>`;
+        } else {
+            logBox.innerHTML = `<b>Kết quả:</b> Không tìm thấy đường đi.`;
         }
 
         isRunning = false;
         document.getElementById('btnRun').disabled = false;
-        edges.forEach(e => e.isActive = false); // Tắt highlight cạnh xét cuối
+        edges.forEach(e => e.isActive = false);
         render();
     }
 
@@ -259,7 +249,8 @@ E C 5</textarea>
         let curr = endId;
         while (prev[curr]) {
             let p = prev[curr];
-            let edge = edges.find(e => e.u === p && e.v === curr);
+            // LOGIC MỚI: Tìm cạnh nối p và curr không phân biệt thứ tự u, v
+            let edge = edges.find(e => (e.u === p && e.v === curr) || (e.v === p && e.u === curr));
             if (edge) edge.isPath = true;
             curr = p;
         }
