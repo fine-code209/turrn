@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Dijkstra Keyboard-Driven Simulation</title>
+    <style>
+        :root { --primary: #2563eb; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --bg: #f8fafc; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 340px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 4px 0 10px rgba(0,0,0,0.05); z-index: 10; overflow-y: auto; }
+        h2 { margin: 0; font-size: 1.2rem; color: #1e293b; border-bottom: 2px solid var(--primary); padding-bottom: 5px; }
+        
+        .input-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.85rem; font-weight: bold; color: #64748b; }
+        textarea, input { width: 100%; font-family: monospace; padding: 10px; box-sizing: border-box; border: 2px solid #cbd5e1; border-radius: 6px; outline: none; }
+        input:focus, textarea:focus { border-color: var(--primary); }
+        
+        .node-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        button { padding: 12px; cursor: pointer; border: none; border-radius: 6px; background: var(--primary); color: white; font-weight: 600; transition: all 0.2s; }
+        button:hover { filter: brightness(90%); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
+        
+        .btn-run { background: var(--success); font-size: 1rem; margin-top: 5px; }
+        .btn-reset { background: #ef4444; }
+
+        #log { padding: 12px; background: #f1f5f9; border-radius: 6px; font-size: 0.9rem; color: #334155; min-height: 60px; border-left: 4px solid var(--primary); line-height: 1.4; }
+
+        /* Workspace */
+        .main { flex: 1; position: relative; background: #ffffff; }
+        svg { width: 100%; height: 100%; }
+
+        /* Graph Styles */
+        .edge { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrowhead); transition: stroke 0.3s; }
+        .edge.active { stroke: var(--warning); stroke-width: 4; }
+        .edge.path { stroke: var(--success); stroke-width: 6; marker-end: url(#arrowhead-path); }
+        
+        .node circle { fill: white; stroke: var(--primary); stroke-width: 2; transition: all 0.3s; }
+        .node.start circle { fill: #dbeafe; stroke: var(--primary); stroke-width: 4; }
+        .node.end circle { fill: #fee2e2; stroke: var(--danger); stroke-width: 4; }
+        .node.current circle { fill: var(--warning); r: 25; stroke: #b45309; }
+        .node.visited circle { stroke: var(--success); stroke-width: 3; }
+        
+        text { pointer-events: none; user-select: none; font-weight: bold; font-size: 14px; text-anchor: middle; }
+        .weight-text { font-size: 12px; fill: #1e293b; font-weight: bold; }
+        .weight-bg { fill: white; opacity: 0.9; }
+        .dist-text { font-size: 12px; fill: var(--danger); }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Mô phỏng Dijkstra</h2>
+    
+    <div class="input-group">
+        <label>1. Nhập danh sách cạnh (u v w):</label>
+        <textarea id="edgeInput" placeholder="A B 6&#10;A D 1&#10;D B 2&#10;B C 5">A B 6
+A D 1
+D B 2
+B C 5
+D E 1
+E C 5</textarea>
+    </div>
+
+    <button onclick="buildGraph()">TẠO ĐỒ THỊ</button>
+
+    <div class="node-inputs">
+        <div class="input-group">
+            <label>Điểm đầu:</label>
+            <input type="text" id="startInput" placeholder="A" oninput="syncNodes()">
+        </div>
+        <div class="input-group">
+            <label>Điểm cuối:</label>
+            <input type="text" id="endInput" placeholder="C" oninput="syncNodes()">
+        </div>
+    </div>
+
+    <button id="btnRun" class="btn-run" onclick="startAutoSimulation()">BẮT ĐẦU CHẠY</button>
+    <button class="btn-reset" onclick="location.reload()">XÓA TẤT CẢ</button>
+
+    <div id="log"><b>Trạng thái:</b> Sẵn sàng. Hãy nhập dữ liệu và nhấn "Tạo đồ thị".</div>
+</div>
+
+<div class="main">
+    <svg id="svgCanvas">
+        <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="23" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+            </marker>
+            <marker id="arrowhead-path" markerWidth="10" markerHeight="7" refX="23" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
+            </marker>
+        </defs>
+    </svg>
+</div>
+
+<script>
+    let nodes = [], edges = [];
+    let startId = null, endId = null;
+    let distances = {}, prev = {}, queue = [], visited = new Set();
+    let isRunning = false;
+
+    const svg = document.getElementById('svgCanvas');
+    const logBox = document.getElementById('log');
+
+    // Cập nhật điểm đầu/cuối khi gõ phím
+    function syncNodes() {
+        if (isRunning) return;
+        startId = document.getElementById('startInput').value.trim().toUpperCase();
+        endId = document.getElementById('endInput').value.trim().toUpperCase();
+        render();
+    }
+
+    function buildGraph() {
+        if(isRunning) return;
+        const text = document.getElementById('edgeInput').value.trim();
+        if (!text) return alert("Vui lòng nhập cạnh!");
+
+        nodes = []; edges = []; visited.clear(); distances = {}; prev = {}; queue = [];
+        const nodeSet = new Set();
+        
+        text.split('\n').forEach(line => {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 3) {
+                const [u, v, w] = parts;
+                nodeSet.add(u.toUpperCase()); 
+                nodeSet.add(v.toUpperCase());
+                edges.push({ u: u.toUpperCase(), v: v.toUpperCase(), weight: parseFloat(w), isPath: false, isActive: false });
+            }
+        });
+
+        const nodeArray = Array.from(nodeSet).sort();
+        const centerX = svg.clientWidth / 2, centerY = svg.clientHeight / 2;
+        const radius = Math.min(centerX, centerY) * 0.7;
+
+        nodeArray.forEach((id, i) => {
+            const angle = (i / nodeArray.length) * 2 * Math.PI;
+            nodes.push({ id, x: centerX + radius * Math.cos(angle), y: centerY + radius * Math.sin(angle), isCurrent: false });
+        });
+
+        syncNodes(); // Cập nhật startId/endId từ ô nhập
+        logBox.innerHTML = "<b>Đã tạo đồ thị!</b><br>Kiểm tra Điểm đầu/cuối rồi nhấn 'Bắt đầu chạy'.";
+    }
+
+    function render() {
+        const defs = svg.querySelector('defs').outerHTML;
+        svg.innerHTML = defs;
+
+        // Vẽ cạnh & Trọng số
+        edges.forEach(edge => {
+            const n1 = nodes.find(n => n.id === edge.u), n2 = nodes.find(n => n.id === edge.v);
+            if (!n1 || !n2) return;
+            
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", n1.x); line.setAttribute("y1", n1.y);
+            line.setAttribute("x2", n2.x); line.setAttribute("y2", n2.y);
+            line.setAttribute("class", `edge ${edge.isPath ? 'path' : ''} ${edge.isActive ? 'active' : ''}`);
+            svg.appendChild(line);
+
+            const mx = (n1.x + n2.x) / 2, my = (n1.y + n2.y) / 2;
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            r.setAttribute("x", mx - 12); r.setAttribute("y", my - 10); r.setAttribute("width", 24); r.setAttribute("height", 16); r.setAttribute("rx", 4); r.setAttribute("class", "weight-bg");
+            const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            t.setAttribute("x", mx); t.setAttribute("y", my + 4); t.setAttribute("class", "weight-text");
+            t.textContent = edge.weight;
+            g.appendChild(r); g.appendChild(t); svg.appendChild(g);
+        });
+
+        // Vẽ đỉnh
+        nodes.forEach(node => {
+            const isStart = node.id === startId;
+            const isEnd = node.id === endId;
+            
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            g.setAttribute("class", `node ${isStart ? 'start' : ''} ${isEnd ? 'end' : ''} ${visited.has(node.id) ? 'visited' : ''} ${node.isCurrent ? 'current' : ''}`);
+            
+            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            c.setAttribute("cx", node.x); c.setAttribute("cy", node.y); c.setAttribute("r", 20);
+            
+            const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            t.setAttribute("x", node.x); t.setAttribute("y", node.y + 5); t.textContent = node.id;
+            
+            const d = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            d.setAttribute("x", node.x); d.setAttribute("y", node.y + 35); d.setAttribute("class", "dist-text");
+            const dv = distances[node.id];
+            d.textContent = dv === Infinity ? "∞" : (dv === undefined ? "" : "d=" + dv);
+            
+            g.appendChild(c); g.appendChild(t); g.appendChild(d); svg.appendChild(g);
+        });
+    }
+
+    async function startAutoSimulation() {
+        if (isRunning) return;
+        syncNodes(); // Đảm bảo lấy giá trị mới nhất từ input
+
+        if (!nodes.find(n => n.id === startId)) return alert("Đỉnh bắt đầu không tồn tại trong đồ thị!");
+        if (!nodes.find(n => n.id === endId)) return alert("Đỉnh kết thúc không tồn tại trong đồ thị!");
+
+        isRunning = true;
+        document.getElementById('btnRun').disabled = true;
+        
+        // Khởi tạo thuật toán
+        visited.clear(); distances = {}; prev = {};
+        edges.forEach(e => { e.isPath = false; e.isActive = false; });
+        nodes.forEach(n => { distances[n.id] = Infinity; n.isCurrent = false; });
+        
+        distances[startId] = 0;
+        queue = [startId];
+
+        while (queue.length > 0) {
+            queue.sort((a, b) => distances[a] - distances[b]);
+            const u = queue.shift();
+            if (visited.has(u)) continue;
+
+            visited.add(u);
+            nodes.forEach(n => n.isCurrent = (n.id === u));
+            logBox.innerHTML = `Đang xét đỉnh <b>${u}</b> (Khoảng cách: ${distances[u]})`;
+            
+            // Highlight các cạnh kề đang kiểm tra
+            edges.forEach(e => e.isActive = false);
+            const neighbors = edges.filter(e => e.u === u);
+            
+            for (const e of neighbors) {
+                e.isActive = true;
+                const v = e.v;
+                const alt = distances[u] + e.weight;
+                if (alt < distances[v]) {
+                    distances[v] = alt;
+                    prev[v] = u;
+                    if (!visited.has(v)) queue.push(v);
+                }
+            }
+
+            render();
+            await new Promise(r => setTimeout(r, 800)); // Delay để quan sát
+
+            if (u === endId) {
+                tracePath();
+                logBox.innerHTML = `<b>Xong!</b><br>Quãng đường ngắn nhất từ ${startId} đến ${endId} là: <b>${distances[endId]}</b>`;
+                render();
+                break;
+            }
+        }
+        
+        if (distances[endId] === Infinity) {
+            logBox.innerHTML = `<b>Kết quả:</b> Không có đường đi từ ${startId} đến ${endId}.`;
+        }
+
+        isRunning = false;
+        document.getElementById('btnRun').disabled = false;
+        edges.forEach(e => e.isActive = false); // Tắt highlight cạnh xét cuối
+        render();
+    }
+
+    function tracePath() {
+        let curr = endId;
+        while (prev[curr]) {
+            let p = prev[curr];
+            let edge = edges.find(e => e.u === p && e.v === curr);
+            if (edge) edge.isPath = true;
+            curr = p;
+        }
+    }
+</script>
+</body>
+</html>
